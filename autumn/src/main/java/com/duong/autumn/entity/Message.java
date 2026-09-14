@@ -1,36 +1,35 @@
 package com.duong.autumn.entity;
 
 import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "device_tokens")
+@Table(name = "messages")
 @Getter
 @Setter
 @AllArgsConstructor
 @NoArgsConstructor
-public class DeviceTokens {
+@Builder
+public class Message {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "id")
     private Long id;
 
-    @Column(name = "model", nullable = false)
-    private String model;
+    @Column(name = "content", nullable = false, columnDefinition = "TEXT")
+    private String content;
 
-    @Column(name = "fcm_token", nullable = false)
-    private String fcmToken;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "sender_id", nullable = false)
+    private User sender;
 
-    @ManyToOne
-    @JoinColumn(name = "id_user")
-    private Users user;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "conversation_id", nullable = false)
+    private Conversation conversation;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
@@ -39,4 +38,7 @@ public class DeviceTokens {
     @UpdateTimestamp
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
+
+    @Column(name = "is_delete")
+    private Integer isDelete = 0;
 }

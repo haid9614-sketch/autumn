@@ -1,34 +1,32 @@
 package com.duong.autumn.entity;
 
 import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "conversations")
+@Table(name = "conversations", uniqueConstraints = {@UniqueConstraint(columnNames = {"user1_id", "user2_id"})})
 @Setter
 @Getter
 @AllArgsConstructor
 @NoArgsConstructor
-public class Conversations {
+@Builder
+public class Conversation {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "id")
     private Long id;
 
-    @ManyToOne
-    @JoinColumn(name = "id_user_1", nullable = false)
-    private Users user1;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user1_id", nullable = false)
+    private User user1;
 
-    @ManyToOne
-    @JoinColumn(name = "id_user_2", nullable = false)
-    private Users user2;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user2_id", nullable = false)
+    private User user2;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
