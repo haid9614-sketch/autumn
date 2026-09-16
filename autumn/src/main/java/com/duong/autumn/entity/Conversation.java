@@ -35,6 +35,7 @@ public class Conversation {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
+    @Builder.Default
     @Column(name = "is_delete")
     private Integer isDelete = 0;
 }
