@@ -37,7 +37,7 @@ public class AuthService {
         newUser.setEmail(request.getEmail());
         newUser.setUsername(request.getUsername());
         newUser.setDateOfBirth(request.getDateOfBirth());
-
+        newUser.setAvatar("https://i.imgur.com/default-avatar.png");
         String hashPass = passwordEncoder.encode(request.getPassword());
         newUser.setPassword(hashPass);
         userRepository.save(newUser);
