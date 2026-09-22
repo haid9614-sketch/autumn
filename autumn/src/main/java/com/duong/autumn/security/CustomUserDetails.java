@@ -33,29 +33,6 @@ public class CustomUserDetails implements UserDetails {
         return user.getEmail();
     }
 
-    public Long getId() {
-        return user.getId();
-    }
-
-    public String getName() {
-        return user.getName();
-    }
-
-    public String getNameUser() {
-        return user.getUsername();
-    }
-
-    public String getAvatar() {
-        return user.getAvatar();
-    }
-
-    public String getSex() {
-        return user.getSex();
-    }
-
-    public LocalDate getDateOfBirth() {
-        return user.getDateOfBirth();
-    }
 
     @Override
     public boolean isAccountNonExpired() {
