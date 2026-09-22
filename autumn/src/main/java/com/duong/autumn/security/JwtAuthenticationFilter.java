@@ -55,7 +55,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                         userDetails.getAuthorities()
                 );
 
-                // Đính kèm thêm thông tin chi tiết của request, dc IP
+                // Đính kèm thêm thông tin chi tiết của request, dchi IP
                 authToken.setDetails(
                         new WebAuthenticationDetailsSource().buildDetails(request)
                 );

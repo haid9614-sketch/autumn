@@ -7,6 +7,7 @@ import lombok.Setter;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 
@@ -30,6 +31,30 @@ public class CustomUserDetails implements UserDetails {
     public String getUsername() {
         // đăng nhập bằng email, email duy nhất.
         return user.getEmail();
+    }
+
+    public Long getId() {
+        return user.getId();
+    }
+
+    public String getName() {
+        return user.getName();
+    }
+
+    public String getNameUser() {
+        return user.getUsername();
+    }
+
+    public String getAvatar() {
+        return user.getAvatar();
+    }
+
+    public String getSex() {
+        return user.getSex();
+    }
+
+    public LocalDate getDateOfBirth() {
+        return user.getDateOfBirth();
     }
 
     @Override
