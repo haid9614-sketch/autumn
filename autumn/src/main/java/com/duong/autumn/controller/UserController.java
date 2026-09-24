@@ -1,5 +1,7 @@
 package com.duong.autumn.controller;
 
+import com.duong.autumn.dto.request.ChangePasswordRequest;
+import com.duong.autumn.dto.request.ChangeUsernameRequest;
 import com.duong.autumn.dto.request.UpdateProfileRequest;
 import com.duong.autumn.dto.response.MessageResponse;
 import com.duong.autumn.dto.response.UserProfileResponse;
@@ -34,5 +36,19 @@ public class UserController {
     public ResponseEntity<MessageResponse> updateProfile(
             @Valid @RequestBody UpdateProfileRequest request) {
         return ResponseEntity.ok(userService.updateProfile(request));
+    }
+
+    // doi mat khau
+    @PutMapping("/me/password")
+    public ResponseEntity<MessageResponse> changePassword(
+            @Valid @RequestBody ChangePasswordRequest request) {
+        return ResponseEntity.ok(userService.changePassword(request));
+    }
+
+    // đổi username
+    @PutMapping("me/username")
+    public ResponseEntity<MessageResponse> changeUsername(
+            @Valid @RequestBody ChangeUsernameRequest request) {
+        return ResponseEntity.ok(userService.changeUsername(request));
     }
 }
