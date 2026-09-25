@@ -26,4 +26,26 @@ public class FileUploadService {
             throw new RuntimeException("Lỗi khi tải ảnh lên hệ thống đám mây");
         }
     }
+
+    // hàm xóa ảnh
+    public void deleteImage(String imageUrl) {
+        try {
+            // Cắt lấy public_id từ URL
+            // https://.../v1234/autumn_posts/abc.jpg -> autumn_posts/abc
+            int startIndex = imageUrl.indexOf("autumn_");
+            int endIndex = imageUrl.lastIndexOf(".");
+
+            if (startIndex == -1 || endIndex == -1) {
+                throw new RuntimeException("Đường dẫn ảnh không hợp lệ");
+            }
+
+            String publicId = imageUrl.substring(startIndex, endIndex);
+
+            cloudinary.uploader().destroy(publicId, ObjectUtils.emptyMap());
+        } catch (Exception e) {
+            throw new RuntimeException("Lỗi khi xóa ảnh trên hệ thống đám mây");
+        }
+    }
+
+
 }
