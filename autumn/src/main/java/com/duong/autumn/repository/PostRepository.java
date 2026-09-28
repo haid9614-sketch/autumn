@@ -19,7 +19,8 @@ public interface PostRepository extends JpaRepository<Post, Long> {
             "(CASE WHEN (SELECT COUNT(l2) FROM Like l2 WHERE l2.post = p AND l2.user.id = :currentUserId) > 0 THEN true ELSE false END)" +
             ") FROM Post p JOIN p.user u " +
             "WHERE p.isDelete = 0 " +
-            "AND (u.id = :currentUserId OR u.id IN (SELECT f.following.id FROM Follow f WHERE f.follower.id = :currentUserId))")
+            "AND (u.id = :currentUserId OR u.id IN (SELECT f.following.id FROM Follow f WHERE f.follower.id = :currentUserId)) " +
+            "ORDER BY p.createdAt DESC")
     Page<PostResponse> getStandardFeed(@Param("currentUserId") Long currentUserId, Pageable pageable);
 
     // TRENDING FEED: Bảng tin nổi bật (Toàn hệ thống, sắp xếp theo Like)
