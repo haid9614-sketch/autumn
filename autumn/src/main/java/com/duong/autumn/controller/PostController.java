@@ -46,14 +46,4 @@ public class PostController {
         return ResponseEntity.ok(new MessageResponse("Đăng bài viết thành công"));
     }
 
-    // feed
-    @GetMapping
-    public ResponseEntity<Page<PostResponse>> getFeeds(
-            @RequestParam(defaultValue = "standard") String type, // Loại Feed: standard, trending, liked
-            @RequestParam(defaultValue = "0") int page,           // Trang hiện tại (Spring Data bắt đầu từ 0)
-            @RequestParam(defaultValue = "10") int size           // Số lượng bài viết trên 1 trang
-    ) {
-        return ResponseEntity.ok(postService.getFeeds(type, page, size));
-    }
-
 }
