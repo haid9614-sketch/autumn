@@ -54,6 +54,7 @@ public class CustomUserDetails implements UserDetails {
 
     @Override
     public boolean isEnabled() {
-        return user.getIsDelete() == 0;
+        return Integer.valueOf(0).equals(user.getIsDelete());
     }
 }
+

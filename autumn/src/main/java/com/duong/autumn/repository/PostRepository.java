@@ -13,6 +13,8 @@ import java.util.List;
 
 public interface PostRepository extends JpaRepository<Post, Long> {
 
+    boolean existsByImage(String image);
+
     // Cùng 11 trường PostResponse như code cũ; ba trường cuối là sort key nội bộ.
     String FEED_SELECT = """
             SELECT new com.duong.autumn.dto.internal.FeedRow(
@@ -31,6 +33,7 @@ public interface PostRepository extends JpaRepository<Post, Long> {
             FROM Post p
             JOIN p.user u
             WHERE p.isDelete = 0
+              AND u.isDelete = 0
               AND (u.id = :currentUserId OR u.id IN (
                   SELECT f.following.id FROM Follow f
                   WHERE f.follower.id = :currentUserId
@@ -55,6 +58,7 @@ public interface PostRepository extends JpaRepository<Post, Long> {
             JOIN myLike.post p
             JOIN p.user u
             WHERE p.isDelete = 0
+              AND u.isDelete = 0
               AND myLike.user.id = :currentUserId
               AND (
                   :afterCreatedAt IS NULL
@@ -77,6 +81,7 @@ public interface PostRepository extends JpaRepository<Post, Long> {
             JOIN p.user u
             WHERE item.snapshotId = :snapshotId
               AND p.isDelete = 0
+              AND u.isDelete = 0
               AND (
                   :afterLikeCount IS NULL
                   OR item.likeCount < :afterLikeCount
@@ -103,9 +108,11 @@ public interface PostRepository extends JpaRepository<Post, Long> {
                 (snapshot_id, post_id, like_count, post_created_at)
             SELECT :snapshotId, p.id, COUNT(l.id), p.created_at
             FROM posts p
+            JOIN users u ON u.id = p.user_id
             LEFT JOIN likes l ON l.post_id = p.id
-            WHERE p.is_delete = 0
+            WHERE p.is_delete = 0 AND u.is_delete = 0
             GROUP BY p.id, p.created_at
             """, nativeQuery = true)
     int populateTrendingSnapshot(@Param("snapshotId") String snapshotId);
 }
+
