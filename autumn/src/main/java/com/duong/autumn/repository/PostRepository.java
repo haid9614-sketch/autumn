@@ -115,4 +115,3 @@ public interface PostRepository extends JpaRepository<Post, Long> {
             """, nativeQuery = true)
     int populateTrendingSnapshot(@Param("snapshotId") String snapshotId);
 }
-

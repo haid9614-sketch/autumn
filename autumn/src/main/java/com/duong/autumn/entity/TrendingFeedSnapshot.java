@@ -1,28 +1,20 @@
 package com.duong.autumn.entity;
-
 import jakarta.persistence.*;
-import lombok.*;
-
 import java.time.Instant;
 
+/** Một phiên bản xếp hạng chung; sort key không bị sửa sau khi tạo. */
 @Entity
-@Table(name = "feed_trending_snapshots", indexes = {
-        @Index(name = "idx_feed_snapshot_expiry", columnList = "expires_at")
-})
-@Getter
-@NoArgsConstructor
-@AllArgsConstructor
+@Table(name = "feed_trending_snapshots")
 public class TrendingFeedSnapshot {
-    @Id
-    @Column(length = 36)
+    @Id @Column(length = 36)
     private String id;
-
-    @Column(name = "user_id", nullable = false)
-    private Long userId;
-
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
-
-    @Column(name = "expires_at", nullable = false)
-    private Instant expiresAt;
+    protected TrendingFeedSnapshot() {}
+    public TrendingFeedSnapshot(String id, Instant createdAt) {
+        this.id = id;
+        this.createdAt = createdAt;
+    }
+    public String getId() { return id; }
+    public Instant getCreatedAt() { return createdAt; }
 }

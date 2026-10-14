@@ -1,61 +1,91 @@
 package com.duong.autumn.service;
-
-import com.duong.autumn.entity.TrendingFeedSnapshot;
-import com.duong.autumn.repository.PostRepository;
-import com.duong.autumn.repository.TrendingFeedSnapshotRepository;
-import lombok.RequiredArgsConstructor;
+import com.duong.autumn.entity.TrendingFeedSession;
+import com.duong.autumn.feed.FeedCursor;
+import com.duong.autumn.feed.TrendingFeedSessionRef;
+import com.duong.autumn.repository.*;
 import org.springframework.http.HttpStatus;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
-
-import java.time.Duration;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
 
 @Service
-@RequiredArgsConstructor
 public class TrendingFeedSnapshotService {
-    private static final Duration SESSION_TTL = Duration.ofMinutes(30);
+    private final TrendingFeedSnapshotRepository snapshots;
+    private final TrendingFeedHeadRepository heads;
+    private final TrendingFeedSessionRepository sessions;
+    public TrendingFeedSnapshotService(TrendingFeedSnapshotRepository snapshots,
+                                      TrendingFeedHeadRepository heads,
+                                      TrendingFeedSessionRepository sessions) {
+        this.snapshots = snapshots; this.heads = heads; this.sessions = sessions;
+    }
 
-    private final TrendingFeedSnapshotRepository snapshotRepository;
-    private final PostRepository postRepository;
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public TrendingFeedSessionRef open(Long userId, FeedCursor cursor, String requestedSessionId) {
+        if (cursor != null) {
+            // Migration tạo session cho cursor v1 với id = snapshotId cũ.
+            String id = cursor.version() == 1 ? cursor.snapshotId() : cursor.sessionId();
+            validateId(id);
+            if (requestedSessionId != null && !id.equals(requestedSessionId)) throw badSession();
+            TrendingFeedSession session = sessions.findForRead(id).orElseThrow(this::closedSession);
+            validateOwner(session, userId);
+            if (session.getReleasedAt() != null || session.getSnapshotId() == null) throw closedSession();
+            if (!Objects.equals(session.getSnapshotId(), cursor.snapshotId())) throw badSession();
+            snapshots.findForRead(session.getSnapshotId()).orElseThrow(this::closedSession);
+            return new TrendingFeedSessionRef(id, session.getSnapshotId());
+        }
+        String id = requestedSessionId == null ? UUID.randomUUID().toString() : requestedSessionId;
+        validateId(id);
+        sessions.ensureExists(id, userId, Instant.now());
+        TrendingFeedSession session = sessions.findForWrite(id).orElseThrow(this::closedSession);
+        validateOwner(session, userId);
+        if (session.getReleasedAt() != null) throw closedSession();
+        if (session.getSnapshotId() == null) {
+            var head = heads.findForRead().orElseThrow(this::notReady);
+            if (head.getSnapshotId() == null) throw notReady();
+            snapshots.findForRead(head.getSnapshotId()).orElseThrow(this::notReady);
+            session.attach(head.getSnapshotId());
+            sessions.saveAndFlush(session);
+        } else {
+            // Retry lần đầu không đổi snapshot dù head đã được cập nhật.
+            snapshots.findForRead(session.getSnapshotId()).orElseThrow(this::closedSession);
+        }
+        return new TrendingFeedSessionRef(id, session.getSnapshotId());
+    }
 
-    @Transactional
-    public String open(Long userId, String snapshotId) {
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public void release(Long userId, String id) {
+        validateId(id);
         Instant now = Instant.now();
-        if (snapshotId == null) {
-            String id = UUID.randomUUID().toString();
-            snapshotRepository.saveAndFlush(new TrendingFeedSnapshot(
-                    id, userId, now, now.plus(SESSION_TTL)));
-            // INSERT ... SELECT: chốt toàn bộ sort key trong DB, không tải hết bài vào RAM.
-            postRepository.populateTrendingSnapshot(id);
-            return id;
-        }
-
-        TrendingFeedSnapshot snapshot = snapshotRepository.findForRead(snapshotId)
-                .orElseThrow(this::expiredSession);
-        if (!Objects.equals(snapshot.getUserId(), userId)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Phiên bảng tin không thuộc tài khoản hiện tại.");
-        }
-        if (!snapshot.getExpiresAt().isAfter(now)) {
-            throw expiredSession();
-        }
-        return snapshot.getId();
+        sessions.ensureExists(id, userId, now);
+        TrendingFeedSession session = sessions.findForWrite(id).orElseThrow(this::closedSession);
+        validateOwner(session, userId);
+        // Giữ marker đóng 24h, không cho GET bị hủy đến muộn mở lại phiên.
+        session.release(now);
+        sessions.saveAndFlush(session);
     }
 
-    @Scheduled(fixedDelay = 300_000L)
-    @Transactional
-    public void deleteExpiredSnapshots() {
-        snapshotRepository.deleteExpired(Instant.now());
+    private void validateOwner(TrendingFeedSession session, Long userId) {
+        if (userId == null || !Objects.equals(session.getUserId(), userId)) throw badSession();
     }
-
-    private ResponseStatusException expiredSession() {
+    private void validateId(String id) {
+        try {
+            if (id == null || !UUID.fromString(id).toString().equals(id)) throw badSession();
+        } catch (IllegalArgumentException exception) { throw badSession(); }
+    }
+    private ResponseStatusException badSession() {
+        return new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "Phiên bảng tin không hợp lệ hoặc không thuộc tài khoản hiện tại.");
+    }
+    private ResponseStatusException closedSession() {
         return new ResponseStatusException(HttpStatus.GONE,
-                "Phiên xu hướng đã hết hạn. Hãy tải lại bảng tin.");
+                "Phiên bảng tin đã được đóng. Hãy mở lại bảng tin.");
+    }
+    private ResponseStatusException notReady() {
+        return new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                "Bảng xếp hạng đang được chuẩn bị. Hãy thử lại sau.");
     }
 }
-

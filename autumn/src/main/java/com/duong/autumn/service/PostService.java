@@ -13,6 +13,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 import java.time.LocalDateTime;
@@ -37,8 +38,13 @@ public class PostService {
                 .content(request.getContent()).user(author).isDelete(0).build());
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public FeedResponse getFeed(FeedType requestedType, String token, int limit) {
+        return getFeed(requestedType, token, limit, null);
+    }
+
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public FeedResponse getFeed(FeedType requestedType, String token, int limit, String feedSessionId) {
         if (requestedType == null || limit < 1 || limit > 50) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Loại feed phải hợp lệ và limit nằm trong khoảng 1 đến 50.");
@@ -58,12 +64,15 @@ public class PostService {
         Long afterId = cursor == null ? null : cursor.afterId();
         PageRequest batchLimit = PageRequest.of(0, limit + 1);
         String snapshotId = null;
+        String sessionId = null;
         List<FeedRow> rows;
         switch (type) {
             case STANDARD -> rows = postRepository.getStandardFeed(userId, afterTime, afterId, batchLimit);
             case LIKED -> rows = postRepository.getLikedFeed(userId, afterTime, afterId, batchLimit);
             case TRENDING -> {
-                snapshotId = snapshotService.open(userId, cursor == null ? null : cursor.snapshotId());
+                TrendingFeedSessionRef session = snapshotService.open(userId, cursor, feedSessionId);
+                snapshotId = session.snapshotId();
+                sessionId = session.sessionId();
                 Long score = cursor == null ? null : cursor.afterLikeCount();
                 rows = postRepository.getTrendingFeed(userId, snapshotId, score, afterTime, afterId, batchLimit);
             }
@@ -75,11 +84,15 @@ public class PostService {
         String nextCursor = null;
         if (hasMore) {
             FeedRow last = visible.get(visible.size() - 1);
-            nextCursor = cursorCodec.encode(new FeedCursor(1, type, userId,
+            nextCursor = cursorCodec.encode(new FeedCursor(2, type, userId,
                     last.getCursorCreatedAt(), last.getCursorId(),
-                    last.getCursorLikeCount(), snapshotId));
+                    last.getCursorLikeCount(), snapshotId, sessionId));
         }
-        return new FeedResponse(items, nextCursor, hasMore);
+        return new FeedResponse(items, nextCursor, hasMore, sessionId);
+    }
+
+    public void closeFeedSession(String feedSessionId) {
+        snapshotService.release(currentUserId(), feedSessionId);
     }
 
     private Long currentUserId() {

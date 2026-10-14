@@ -51,7 +51,7 @@ public class FeedCursorCodec {
         try {
             FeedCursor cursor = objectMapper.readValue(
                     Base64.getUrlDecoder().decode(token), FeedCursor.class);
-            if (cursor == null || cursor.version() != 1 || cursor.type() == null
+            if (cursor == null || (cursor.version() != 1 && cursor.version() != 2) || cursor.type() == null
                     || userId == null || !Objects.equals(cursor.userId(), userId)
                     || cursor.afterCreatedAt() == null || cursor.afterId() == null
                     || cursor.afterId() <= 0 || cursor.afterLikeCount() == null
@@ -63,7 +63,13 @@ public class FeedCursorCodec {
                         .toString().equalsIgnoreCase(cursor.snapshotId())) {
                     throw invalidCursor();
                 }
-            } else if (cursor.snapshotId() != null || cursor.afterLikeCount() != 0L) {
+                if (cursor.version() == 2 && (cursor.sessionId() == null
+                        || !UUID.fromString(cursor.sessionId()).toString().equals(cursor.sessionId()))) {
+                    throw invalidCursor();
+                }
+                if (cursor.version() == 1 && cursor.sessionId() != null) throw invalidCursor();
+            } else if (cursor.snapshotId() != null || cursor.sessionId() != null
+                    || cursor.afterLikeCount() != 0L) {
                 throw invalidCursor();
             }
             return cursor;
