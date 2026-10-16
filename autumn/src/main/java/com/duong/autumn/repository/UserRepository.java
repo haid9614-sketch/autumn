@@ -15,5 +15,6 @@ public interface UserRepository extends JpaRepository<User, Long> {
     boolean existsByUsername(String username);
     boolean existsByAvatar(String avatar);
 
-
+    @Query("SELECT u FROM User u WHERE u.id = :id AND u.isDelete = 0")
+    Optional<User> findActiveById(@Param("id") Long id);
 }

@@ -2,36 +2,49 @@ package com.duong.autumn.service;
 
 import com.duong.autumn.dto.request.ChangePasswordRequest;
 import com.duong.autumn.dto.request.ChangeUsernameRequest;
+import com.duong.autumn.dto.request.UpdateProfileRequest;
 import com.duong.autumn.dto.response.MessageResponse;
 import com.duong.autumn.dto.response.UserProfileResponse;
 import com.duong.autumn.entity.User;
+import com.duong.autumn.repository.FollowRepository;
 import com.duong.autumn.repository.UserRepository;
 import com.duong.autumn.security.CustomUserDetails;
-import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
-import com.duong.autumn.dto.request.UpdateProfileRequest;
+import org.springframework.web.server.ResponseStatusException;
 
 @Service
 @RequiredArgsConstructor
 public class UserService {
 
     private final UserRepository userRepository;
+    private final FollowRepository followRepository;
     private final FileUploadService fileUploadService;
     private final PasswordEncoder passwordEncoder;
 
-
-    // xem trang cá nhân
-    public UserProfileResponse getMyProfile() {
-
+    private Long getCurrentUserId() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
+        if (authentication == null || !(authentication.getPrincipal() instanceof CustomUserDetails userDetails)) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Bạn cần đăng nhập lại");
+        }
+        return userDetails.getId();
+    }
 
-        User currentUser = userDetails.getUser();
+    // 1. Xem trang cá nhân của chính mình (/me)
+    @Transactional(readOnly = true)
+    public UserProfileResponse getMyProfile() {
+        Long currentUserId = getCurrentUserId();
+        User currentUser = userRepository.findActiveById(currentUserId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy dữ liệu người dùng"));
+
+        long followerCount = followRepository.countByFollowingId(currentUserId);
+        long followingCount = followRepository.countByFollowerId(currentUserId);
 
         return UserProfileResponse.builder()
                 .id(currentUser.getId())
@@ -41,108 +54,118 @@ public class UserService {
                 .avatar(currentUser.getAvatar())
                 .sex(currentUser.getSex())
                 .dateOfBirth(currentUser.getDateOfBirth())
+                .followerCount(followerCount)
+                .followingCount(followingCount)
                 .build();
     }
 
+    // 2. Xem trang cá nhân của người dùng khác (/api/users/{userId})
+    @Transactional(readOnly = true)
+    public UserProfileResponse getUserProfile(Long targetUserId) {
+        Long currentUserId = getCurrentUserId();
+        User targetUser = userRepository.findActiveById(targetUserId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy người dùng này"));
 
-    // update avatar
+        long followerCount = followRepository.countByFollowingId(targetUserId);
+        long followingCount = followRepository.countByFollowerId(targetUserId);
+
+        boolean isSelf = currentUserId.equals(targetUserId);
+        Boolean isFollowing = isSelf ? null : followRepository.existsByFollowerIdAndFollowingId(currentUserId, targetUserId);
+        Boolean isFollowedBy = isSelf ? null : followRepository.existsByFollowerIdAndFollowingId(targetUserId, currentUserId);
+
+        return UserProfileResponse.builder()
+                .id(targetUser.getId())
+                .name(targetUser.getName())
+                .username(targetUser.getUsername())
+                .email(isSelf ? targetUser.getEmail() : null) // Bảo mật: Không lộ email của người khác
+                .avatar(targetUser.getAvatar())
+                .sex(targetUser.getSex())
+                .dateOfBirth(isSelf ? targetUser.getDateOfBirth() : null) // Bảo mật: Không lộ ngày sinh người khác
+                .followerCount(followerCount)
+                .followingCount(followingCount)
+                .isFollowing(isFollowing)
+                .isFollowedBy(isFollowedBy)
+                .build();
+    }
+
+    // 3. Cập nhật avatar
+    @Transactional
     public MessageResponse updateAvatar(MultipartFile file) {
-        if (file.isEmpty()) {
-            throw new RuntimeException("File ảnh không được để trống");
+        if (file == null || file.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "File ảnh không được để trống");
         }
 
+        Long currentUserId = getCurrentUserId();
+        User currentUser = userRepository.findActiveById(currentUserId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy dữ liệu người dùng"));
+
         String imageUrl = fileUploadService.uploadImage(file, "autumn_avatars");
-
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
-        User currentUser = userDetails.getUser();
-
         currentUser.setAvatar(imageUrl);
         userRepository.save(currentUser);
 
         return new MessageResponse("Cập nhật ảnh đại diện thành công");
     }
 
-
-    // update thông tin cơ bản, name, sex, brithday
+    // 4. Cập nhật thông tin cơ bản (name, sex, birthday)
     @Transactional
     public MessageResponse updateProfile(UpdateProfileRequest request) {
-
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
-        Long currentUserId = userDetails.getId();
-
-
-        User currentUser = userRepository.findById(currentUserId)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy dữ liệu người dùng"));
+        Long currentUserId = getCurrentUserId();
+        User currentUser = userRepository.findActiveById(currentUserId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy dữ liệu người dùng"));
 
         currentUser.setName(request.getName());
         currentUser.setSex(request.getSex());
         currentUser.setDateOfBirth(request.getDateOfBirth());
 
         userRepository.save(currentUser);
-
         return new MessageResponse("Cập nhật thông tin cá nhân thành công");
     }
 
-    // đổi mật khẩu
+    // 5. Đổi mật khẩu
     @Transactional
     public MessageResponse changePassword(ChangePasswordRequest request) {
         if (!request.getNewPassword().equals(request.getConfirmPassword())) {
-            throw new RuntimeException("Mật khẩu xác nhận không khớp");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Mật khẩu xác nhận không khớp");
         }
 
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
-
-        User currentUser = userRepository.findById(userDetails.getId())
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy dữ liệu người dùng"));
-
+        Long currentUserId = getCurrentUserId();
+        User currentUser = userRepository.findActiveById(currentUserId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy dữ liệu người dùng"));
 
         if (!passwordEncoder.matches(request.getOldPassword(), currentUser.getPassword())) {
-            throw new RuntimeException("Mật khẩu cũ không chính xác");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Mật khẩu cũ không chính xác");
         }
 
-
         if (passwordEncoder.matches(request.getNewPassword(), currentUser.getPassword())) {
-            throw new RuntimeException("Mật khẩu mới không được giống mật khẩu cũ");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Mật khẩu mới không được giống mật khẩu cũ");
         }
 
         currentUser.setPassword(passwordEncoder.encode(request.getNewPassword()));
-
         userRepository.save(currentUser);
 
         return new MessageResponse("Đổi mật khẩu thành công");
     }
 
-
-    // đổi username
+    // 6. Đổi username
     @Transactional
     public MessageResponse changeUsername(ChangeUsernameRequest request) {
-
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        CustomUserDetails customUserDetails = (CustomUserDetails) authentication.getPrincipal();
-
-        User currentUser = userRepository.findById(customUserDetails.getId())
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy dữ liệu người dùng"));
-
+        Long currentUserId = getCurrentUserId();
+        User currentUser = userRepository.findActiveById(currentUserId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy dữ liệu người dùng"));
 
         if (currentUser.getUsername().equals(request.getUsername())) {
-            throw new RuntimeException("Username mới không được trùng với username hiện tại");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Username mới không được trùng với username hiện tại");
         }
 
-
-        if(userRepository.existsByUsername(request.getUsername())) {
-            throw new RuntimeException("Username này đã được sử dụng"); // Đã sửa lỗi typo "ên"
+        if (userRepository.existsByUsername(request.getUsername())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Username này đã được sử dụng");
         }
 
         currentUser.setUsername(request.getUsername());
-
         userRepository.save(currentUser);
 
         return new MessageResponse("Đổi username thành công");
     }
 
-   //
 
 }
