@@ -4,7 +4,9 @@ import java.time.Instant;
 
 /** Một phiên bản xếp hạng chung; sort key không bị sửa sau khi tạo. */
 @Entity
-@Table(name = "feed_trending_snapshots")
+@Table(name = "feed_trending_snapshots", indexes = {
+        @Index(name = "idx_trending_snapshot_created", columnList = "created_at, id")
+})
 public class TrendingFeedSnapshot {
     @Id @Column(length = 36)
     private String id;
