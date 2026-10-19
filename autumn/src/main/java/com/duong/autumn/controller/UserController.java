@@ -1,5 +1,7 @@
 package com.duong.autumn.controller;
 
+import com.duong.autumn.dto.response.FeedResponse;
+import com.duong.autumn.service.PostService;
 import com.duong.autumn.dto.request.ChangePasswordRequest;
 import com.duong.autumn.dto.request.ChangeUsernameRequest;
 import com.duong.autumn.dto.request.UpdateProfileRequest;
@@ -23,6 +25,7 @@ public class UserController {
 
     private final UserService userService;
     private final FollowService followService;
+    private final PostService postService;
 
     // Xem trang cá nhân của mình
     @GetMapping("/me")
@@ -63,7 +66,7 @@ public class UserController {
         return ResponseEntity.ok(userService.changeUsername(request));
     }
 
-    // ================= CỤM API FOLLOW CHUẨN INSTAGRAM =================
+    // CỤM API FOLLOW
 
     // 1. Theo dõi người dùng
     @PostMapping("/{targetUserId}/follow")
@@ -93,5 +96,24 @@ public class UserController {
     @GetMapping("/{userId}/following")
     public ResponseEntity<List<FollowUserResponse>> getFollowing(@PathVariable Long userId) {
         return ResponseEntity.ok(followService.getFollowing(userId));
+    }
+
+    //  DANH SÁCH BÀI VIẾT TRÊN TRANG CÁ NHÂN
+
+    // Lấy danh sách bài viết thu gọn của chính mình
+    @GetMapping("/me/posts")
+    public ResponseEntity<FeedResponse> getMyPosts(
+            @RequestParam(required = false) String cursor,
+            @RequestParam(defaultValue = "10") int limit) {
+        return ResponseEntity.ok(postService.getMyPosts(cursor, limit)); // <-- Gọi thẳng sang PostService, lấy ID ngầm qua token
+    }
+
+    // Lấy danh sách bài viết thu gọn của một người dùng bất kỳ
+    @GetMapping("/{userId}/posts")
+    public ResponseEntity<FeedResponse> getUserPosts(
+            @PathVariable Long userId,
+            @RequestParam(required = false) String cursor,
+            @RequestParam(defaultValue = "10") int limit) {
+        return ResponseEntity.ok(postService.getUserPosts(userId, cursor, limit));
     }
 }

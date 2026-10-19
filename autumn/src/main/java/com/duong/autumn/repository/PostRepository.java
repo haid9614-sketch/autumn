@@ -1,6 +1,7 @@
 package com.duong.autumn.repository;
 
 import com.duong.autumn.dto.internal.FeedRow;
+import com.duong.autumn.dto.response.PostResponse;
 import com.duong.autumn.entity.Post;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -10,23 +11,96 @@ import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 public interface PostRepository extends JpaRepository<Post, Long> {
 
-    boolean existsByImage(String image);
+    @Query("""
+            SELECT CASE WHEN COUNT(p) > 0 THEN true ELSE false END
+            FROM Post p
+            WHERE p.image = :image AND p.isDelete = 0
+            """)
+    boolean existsByImage(@Param("image") String image);
+
+    @Query("""
+            SELECT p FROM Post p
+            JOIN p.user u
+            WHERE p.id = :postId AND p.isDelete = 0 AND u.isDelete = 0
+            """)
+    Optional<Post> findActiveById(@Param("postId") Long postId);
+
+    @Query("""
+            SELECT CASE WHEN COUNT(p) > 0 THEN true ELSE false END
+            FROM Post p
+            JOIN p.user u
+            WHERE p.id = :postId AND p.isDelete = 0 AND u.isDelete = 0
+            """)
+    boolean existsActiveById(@Param("postId") Long postId);
+
+    @Query("""
+            SELECT COUNT(p) FROM Post p
+            WHERE p.user.id = :userId AND p.isDelete = 0 AND p.user.isDelete = 0
+            """)
+    long countActiveByUserId(@Param("userId") Long userId);
 
     // Cùng 11 trường PostResponse như code cũ; ba trường cuối là sort key nội bộ.
     String FEED_SELECT = """
             SELECT new com.duong.autumn.dto.internal.FeedRow(
                 p.id, p.image, p.name, p.content, p.createdAt,
                 u.id, u.name, u.avatar,
-                (SELECT COUNT(l) FROM Like l WHERE l.post = p),
+                (SELECT COUNT(l) FROM Like l WHERE l.post = p AND l.user.isDelete = 0),
                 (SELECT COUNT(c) FROM Comment c
-                 WHERE c.post = p AND c.isDelete = 0),
+                 WHERE c.post = p AND c.isDelete = 0 AND c.user.isDelete = 0),
                 CASE WHEN (SELECT COUNT(l2) FROM Like l2
                            WHERE l2.post = p AND l2.user.id = :currentUserId) > 0
                      THEN true ELSE false END,
             """;
+
+    // Xem chi tiết 1 bài viết (trả về full content)
+    @Query("""
+            SELECT new com.duong.autumn.dto.response.PostResponse(
+                p.id, p.image, p.name, p.content, p.createdAt,
+                u.id, u.name, u.avatar,
+                (SELECT COUNT(l) FROM Like l WHERE l.post = p AND l.user.isDelete = 0),
+                (SELECT COUNT(c) FROM Comment c
+                 WHERE c.post = p AND c.isDelete = 0 AND c.user.isDelete = 0),
+                CASE WHEN (SELECT COUNT(l2) FROM Like l2
+                           WHERE l2.post = p AND l2.user.id = :currentUserId) > 0
+                     THEN true ELSE false END
+            )
+            FROM Post p
+            JOIN p.user u
+            WHERE p.id = :postId
+              AND p.isDelete = 0
+              AND u.isDelete = 0
+            """)
+    Optional<PostResponse> findPostDetailById(
+            @Param("postId") Long postId,
+            @Param("currentUserId") Long currentUserId
+    );
+
+    // Lấy danh sách bài viết trên trang cá nhân (của mình hoặc của người khác) theo Cursor
+    @Query(FEED_SELECT + """
+                p.createdAt, p.id, :targetUserId)
+            FROM Post p
+            JOIN p.user u
+            WHERE p.isDelete = 0
+              AND u.isDelete = 0
+              AND u.id = :targetUserId
+              AND (
+                  :afterCreatedAt IS NULL
+                  OR p.createdAt < :afterCreatedAt
+                  OR (p.createdAt = :afterCreatedAt AND p.id < :afterId)
+              )
+            ORDER BY p.createdAt DESC, p.id DESC
+            """)
+    List<FeedRow> getUserPostsFeed(
+            @Param("targetUserId") Long targetUserId,
+            @Param("currentUserId") Long currentUserId,
+            @Param("afterCreatedAt") LocalDateTime afterCreatedAt,
+            @Param("afterId") Long afterId,
+            Pageable pageable
+    );
 
     @Query(FEED_SELECT + """
                 p.createdAt, p.id, 0L)

@@ -89,19 +89,28 @@ public class UserService {
     }
 
     // 3. Cập nhật avatar
-    @Transactional
     public MessageResponse updateAvatar(MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "File ảnh không được để trống");
         }
 
         Long currentUserId = getCurrentUserId();
+
+        //  Upload lên Cloudinary ngoài Transaction DB để không làm nghẽn kết nối
+        String newImageUrl = fileUploadService.uploadImage(file, "autumn_avatars");
+
+        //  Đánh dấu ảnh mới là ATTACHED và cập nhật DB
         User currentUser = userRepository.findActiveById(currentUserId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy dữ liệu người dùng"));
 
-        String imageUrl = fileUploadService.uploadImage(file, "autumn_avatars");
-        currentUser.setAvatar(imageUrl);
-        userRepository.save(currentUser);
+        String oldAvatarUrl = currentUser.getAvatar();
+        fileUploadService.markImageInUse(newImageUrl, currentUserId);
+
+        currentUser.setAvatar(newImageUrl);
+        userRepository.saveAndFlush(currentUser);
+
+        // Dọn dẹp avatar cũ trên Cloudinary (nếu là ảnh thuộc hệ thống và không còn dùng ở đâu khác)
+        fileUploadService.cleanupReplacedAvatar(oldAvatarUrl, currentUserId);
 
         return new MessageResponse("Cập nhật ảnh đại diện thành công");
     }

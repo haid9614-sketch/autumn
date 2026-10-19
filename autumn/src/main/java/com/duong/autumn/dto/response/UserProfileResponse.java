@@ -14,6 +14,7 @@ public class UserProfileResponse {
     private String avatar;
     private String sex;
     private LocalDate dateOfBirth;
+    private long postCount;        // Tổng số tác phẩm đã đăng
     private long followerCount;    // Số người đang theo dõi user này
     private long followingCount;   // Số người mà user này đang theo dõi
     private Boolean isFollowing;   // Mình có đang theo dõi user này không (null khi xem /me)

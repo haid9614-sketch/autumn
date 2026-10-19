@@ -16,12 +16,17 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+
 import java.time.LocalDateTime;
 import java.util.List;
 
 @Service
 @RequiredArgsConstructor
 public class PostService {
+
+    private static final int PREVIEW_CONTENT_MAX_LENGTH = 120;
+    private static final String PREVIEW_SUFFIX = "... xem thêm";
+
     private final PostRepository postRepository;
     private final UserRepository userRepository;
     private final FollowRepository followRepository;
@@ -36,6 +41,82 @@ public class PostService {
         User author = userRepository.getReferenceById(userId);
         postRepository.save(Post.builder().image(request.getImage()).name(request.getName())
                 .content(request.getContent()).user(author).isDelete(0).build());
+    }
+
+    // Xem chi tiết 1 bài viết (trả về full content không cắt chữ)
+    @Transactional(readOnly = true)
+    public PostResponse getPostDetail(Long postId) {
+        Long userId = currentUserId();
+        return postRepository.findPostDetailById(postId, userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Không tìm thấy bài viết này."));
+    }
+
+    // Xóa mềm bài viết (chỉ tác giả mới có quyền xóa)
+    @Transactional
+    public void deletePost(Long postId) {
+        Long userId = currentUserId();
+        Post post = postRepository.findActiveById(postId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Không tìm thấy bài viết này."));
+
+        if (!post.getUser().getId().equals(userId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Bạn không có quyền xóa bài viết của người khác.");
+        }
+
+        post.setIsDelete(1);
+        postRepository.save(post);
+        fileUploadService.cleanupReplacedAvatar(post.getImage(), userId);
+    }
+
+    // Lấy danh sách bài viết thu gọn trên trang cá nhân (của người khác)
+    @Transactional(readOnly = true, isolation = Isolation.READ_COMMITTED)
+    public FeedResponse getUserPosts(Long targetUserId, String token, int limit) {
+        if (limit < 1 || limit > 50) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Limit phải nằm trong khoảng 1 đến 50.");
+        }
+
+        Long viewerId = currentUserId();
+        userRepository.findActiveById(targetUserId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Không tìm thấy người dùng này."));
+
+        FeedCursor cursor = cursorCodec.decodeForRequest(token, FeedType.STANDARD, viewerId);
+        if (cursor != null && !targetUserId.equals(cursor.afterLikeCount())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Cursor không thuộc trang cá nhân của người dùng này.");
+        }
+
+        LocalDateTime afterTime = cursor == null ? null : cursor.afterCreatedAt();
+        Long afterId = cursor == null ? null : cursor.afterId();
+        PageRequest batchLimit = PageRequest.of(0, limit + 1);
+
+        List<FeedRow> rows = postRepository.getUserPostsFeed(
+                targetUserId, viewerId, afterTime, afterId, batchLimit);
+
+        boolean hasMore = rows.size() > limit;
+        List<FeedRow> visible = rows.subList(0, Math.min(limit, rows.size()));
+        List<PostResponse> items = visible.stream()
+                .map(row -> toPreviewPost(row.getPost()))
+                .toList();
+
+        String nextCursor = null;
+        if (hasMore) {
+            FeedRow last = visible.get(visible.size() - 1);
+            nextCursor = cursorCodec.encode(new FeedCursor(2, FeedType.STANDARD, viewerId,
+                    last.getCursorCreatedAt(), last.getCursorId(),
+                    targetUserId, null, null));
+        }
+
+        return new FeedResponse(items, nextCursor, hasMore, null);
+    }
+
+    // Lấy danh sách bài viết thu gọn của chính mình (không gọi sang UserService)
+    @Transactional(readOnly = true, isolation = Isolation.READ_COMMITTED)
+    public FeedResponse getMyPosts(String token, int limit) {
+        return getUserPosts(currentUserId(), token, limit);
     }
 
     @Transactional(isolation = Isolation.READ_COMMITTED)
@@ -80,7 +161,9 @@ public class PostService {
         }
         boolean hasMore = rows.size() > limit;
         List<FeedRow> visible = rows.subList(0, Math.min(limit, rows.size()));
-        List<PostResponse> items = visible.stream().map(FeedRow::getPost).toList();
+        List<PostResponse> items = visible.stream()
+                .map(row -> toPreviewPost(row.getPost()))
+                .toList();
         String nextCursor = null;
         if (hasMore) {
             FeedRow last = visible.get(visible.size() - 1);
@@ -93,6 +176,34 @@ public class PostService {
 
     public void closeFeedSession(String feedSessionId) {
         snapshotService.release(currentUserId(), feedSessionId);
+    }
+
+    // Cắt ngắn mô tả cho thẻ bài viết thu gọn trên Feed và Trang cá nhân
+    private PostResponse toPreviewPost(PostResponse original) {
+        String content = original.getContent();
+        if (content == null || content.length() <= PREVIEW_CONTENT_MAX_LENGTH) {
+            return original;
+        }
+
+        int cutIndex = content.lastIndexOf(' ', PREVIEW_CONTENT_MAX_LENGTH);
+        if (cutIndex < PREVIEW_CONTENT_MAX_LENGTH / 2) {
+            cutIndex = PREVIEW_CONTENT_MAX_LENGTH;
+        }
+        String previewContent = content.substring(0, cutIndex).stripTrailing() + PREVIEW_SUFFIX;
+
+        return new PostResponse(
+                original.getId(),
+                original.getImage(),
+                original.getName(),
+                previewContent,
+                original.getCreatedAt(),
+                original.getAuthorId(),
+                original.getAuthorName(),
+                original.getAuthorAvatar(),
+                original.getLikeCount(),
+                original.getCommentCount(),
+                original.getIsLiked()
+        );
     }
 
     private Long currentUserId() {

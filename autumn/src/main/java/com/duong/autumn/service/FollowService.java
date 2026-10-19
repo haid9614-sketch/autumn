@@ -119,7 +119,7 @@ public class FollowService {
     }
 
     // Hàm phụ trợ chuyển đổi danh sách User sang DTO bằng Batch Query (Chống lỗi N+1)
-    private List<FollowUserResponse> mapToFollowUserResponses(List<User> users, Long currentUserId) {
+    public List<FollowUserResponse> mapToFollowUserResponses(List<User> users, Long currentUserId) {
         if (users.isEmpty()) {
             return Collections.emptyList();
         }
