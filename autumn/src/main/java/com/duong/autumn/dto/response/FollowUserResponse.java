@@ -10,6 +10,6 @@ public class FollowUserResponse {
     private String name;
     private String username;
     private String avatar;
-    private boolean isFollowing;   // Mình có đang follow người này không
-    private boolean isFollowedBy;  // Người này có đang follow mình không (để hiện nút "Theo dõi lại" hoặc nút "Xóa follower")
+    private Boolean isFollowing;   // Mình có đang follow người này không
+    private Boolean isFollowedBy;  // Người này có đang follow mình không (để hiện nút "Theo dõi lại" hoặc nút "Xóa follower")
 }
