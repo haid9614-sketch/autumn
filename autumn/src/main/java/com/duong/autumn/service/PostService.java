@@ -83,11 +83,7 @@ public class PostService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Không tìm thấy người dùng này."));
 
-        FeedCursor cursor = cursorCodec.decodeForRequest(token, FeedType.STANDARD, viewerId);
-        if (cursor != null && !targetUserId.equals(cursor.afterLikeCount())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Cursor không thuộc trang cá nhân của người dùng này.");
-        }
+        FeedCursor cursor = cursorCodec.decodeForProfile(token, viewerId, targetUserId);
 
         LocalDateTime afterTime = cursor == null ? null : cursor.afterCreatedAt();
         Long afterId = cursor == null ? null : cursor.afterId();
@@ -107,7 +103,7 @@ public class PostService {
             FeedRow last = visible.get(visible.size() - 1);
             nextCursor = cursorCodec.encode(new FeedCursor(2, FeedType.STANDARD, viewerId,
                     last.getCursorCreatedAt(), last.getCursorId(),
-                    targetUserId, null, null));
+                    0L, null, null, targetUserId));
         }
 
         return new FeedResponse(items, nextCursor, hasMore, null);
@@ -215,4 +211,6 @@ public class PostService {
         }
         return details.getId();
     }
+
+
 }

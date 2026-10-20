@@ -25,7 +25,7 @@ public class FeedCursorCodec {
     // Kiểm tra đúng một loại feed; giữ method để các caller cũ có thể dùng.
     public FeedCursor decode(String token, FeedType expectedType, Long userId) {
         FeedCursor cursor = read(token, userId);
-        if (cursor != null && cursor.type() != expectedType) {
+        if (cursor != null && (cursor.profileUserId() != null || cursor.type() != expectedType)) {
             throw invalidCursor();
         }
         return cursor;
@@ -34,8 +34,22 @@ public class FeedCursorCodec {
     // /standard được phép tiếp tục phiên TRENDING đã phát khi chưa follow ai.
     public FeedCursor decodeForRequest(String token, FeedType requestedType, Long userId) {
         FeedCursor cursor = read(token, userId);
-        if (cursor != null && cursor.type() != requestedType
-                && !(requestedType == FeedType.STANDARD && cursor.type() == FeedType.TRENDING)) {
+        if (cursor != null && (cursor.profileUserId() != null
+                || (cursor.type() != requestedType
+                && !(requestedType == FeedType.STANDARD && cursor.type() == FeedType.TRENDING)))) {
+            throw invalidCursor();
+        }
+        return cursor;
+    }
+
+    // Profile có phạm vi riêng: cùng viewer và cùng chủ trang cá nhân.
+    public FeedCursor decodeForProfile(String token, Long viewerId, Long targetUserId) {
+        if (targetUserId == null || targetUserId <= 0) {
+            throw invalidCursor();
+        }
+        FeedCursor cursor = read(token, viewerId);
+        if (cursor != null && (cursor.type() != FeedType.STANDARD
+                || !Objects.equals(cursor.profileUserId(), targetUserId))) {
             throw invalidCursor();
         }
         return cursor;
@@ -70,6 +84,10 @@ public class FeedCursorCodec {
                 if (cursor.version() == 1 && cursor.sessionId() != null) throw invalidCursor();
             } else if (cursor.snapshotId() != null || cursor.sessionId() != null
                     || cursor.afterLikeCount() != 0L) {
+                throw invalidCursor();
+            }
+            if (cursor.profileUserId() != null && (cursor.profileUserId() <= 0
+                    || cursor.type() != FeedType.STANDARD || cursor.version() != 2)) {
                 throw invalidCursor();
             }
             return cursor;

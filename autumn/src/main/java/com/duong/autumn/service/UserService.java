@@ -7,6 +7,7 @@ import com.duong.autumn.dto.response.MessageResponse;
 import com.duong.autumn.dto.response.UserProfileResponse;
 import com.duong.autumn.entity.User;
 import com.duong.autumn.repository.FollowRepository;
+import com.duong.autumn.repository.PostRepository;
 import com.duong.autumn.repository.UserRepository;
 import com.duong.autumn.security.CustomUserDetails;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +26,7 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final FollowRepository followRepository;
+    private final PostRepository postRepository;
     private final FileUploadService fileUploadService;
     private final PasswordEncoder passwordEncoder;
 
@@ -45,6 +47,7 @@ public class UserService {
 
         long followerCount = followRepository.countByFollowingId(currentUserId);
         long followingCount = followRepository.countByFollowerId(currentUserId);
+        long postCount = postRepository.countActiveByUserId(currentUserId);
 
         return UserProfileResponse.builder()
                 .id(currentUser.getId())
@@ -54,6 +57,7 @@ public class UserService {
                 .avatar(currentUser.getAvatar())
                 .sex(currentUser.getSex())
                 .dateOfBirth(currentUser.getDateOfBirth())
+                .postCount(postCount)
                 .followerCount(followerCount)
                 .followingCount(followingCount)
                 .build();
@@ -68,6 +72,7 @@ public class UserService {
 
         long followerCount = followRepository.countByFollowingId(targetUserId);
         long followingCount = followRepository.countByFollowerId(targetUserId);
+        long postCount = postRepository.countActiveByUserId(targetUserId);
 
         boolean isSelf = currentUserId.equals(targetUserId);
         Boolean isFollowing = isSelf ? null : followRepository.existsByFollowerIdAndFollowingId(currentUserId, targetUserId);
@@ -81,6 +86,7 @@ public class UserService {
                 .avatar(targetUser.getAvatar())
                 .sex(targetUser.getSex())
                 .dateOfBirth(isSelf ? targetUser.getDateOfBirth() : null) // Bảo mật: Không lộ ngày sinh người khác
+                .postCount(postCount)
                 .followerCount(followerCount)
                 .followingCount(followingCount)
                 .isFollowing(isFollowing)
@@ -178,3 +184,4 @@ public class UserService {
 
 
 }
+

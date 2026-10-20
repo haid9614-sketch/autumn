@@ -81,7 +81,7 @@ public interface PostRepository extends JpaRepository<Post, Long> {
 
     // Lấy danh sách bài viết trên trang cá nhân (của mình hoặc của người khác) theo Cursor
     @Query(FEED_SELECT + """
-                p.createdAt, p.id, :targetUserId)
+                p.createdAt, p.id, 0L)
             FROM Post p
             JOIN p.user u
             WHERE p.isDelete = 0
@@ -188,4 +188,7 @@ public interface PostRepository extends JpaRepository<Post, Long> {
             GROUP BY p.id, p.created_at
             """, nativeQuery = true)
     int populateTrendingSnapshot(@Param("snapshotId") String snapshotId);
+
+
+
 }
