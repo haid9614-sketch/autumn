@@ -46,4 +46,14 @@ public interface UserRepository extends JpaRepository<User, Long> {
             Pageable pageable
     );
 
+    // Tăng tokenVersion trực tiếp dưới DB để vô hiệu hóa toàn bộ JWT cũ (Khi Logout hoặc Đổi mật khẩu)
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("UPDATE User u SET u.tokenVersion = COALESCE(u.tokenVersion, 0) + 1 WHERE u.id = :userId")
+    int incrementTokenVersion(@Param("userId") Long userId);
+
+    // Cập nhật riêng cột avatar để không bao giờ ghi đè mật khẩu hay tokenVersion (Sửa dứt điểm BUG-01)
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("UPDATE User u SET u.avatar = :avatar WHERE u.id = :userId AND u.isDelete = 0")
+    int updateAvatarById(@Param("userId") Long userId, @Param("avatar") String avatar);
+
 }

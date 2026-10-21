@@ -115,8 +115,7 @@ public class UserService {
         String oldAvatarUrl = currentUser.getAvatar();
         fileUploadService.markImageInUse(newImageUrl, currentUserId);
 
-        currentUser.setAvatar(newImageUrl);
-        userRepository.saveAndFlush(currentUser);
+        userRepository.updateAvatarById(currentUserId, newImageUrl);
 
         // Dọn dẹp avatar cũ trên Cloudinary (nếu là ảnh thuộc hệ thống và không còn dùng ở đâu khác)
         fileUploadService.cleanupReplacedAvatar(oldAvatarUrl, currentUserId);
@@ -159,6 +158,8 @@ public class UserService {
         }
 
         currentUser.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        currentUser.setTokenVersion((currentUser.getTokenVersion() == null ? 0 : currentUser.getTokenVersion()) + 1);
+
         userRepository.save(currentUser);
 
         return new MessageResponse("Đổi mật khẩu thành công");

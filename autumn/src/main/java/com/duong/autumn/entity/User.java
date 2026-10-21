@@ -52,4 +52,8 @@ public class User {
     @Builder.Default
     @Column(name = "is_delete")
     private Integer isDelete = 0;
+
+    @Builder.Default
+    @Column(name = "token_version", nullable = false, columnDefinition = "INT NOT NULL DEFAULT 0")
+    private Integer tokenVersion = 0;
 }

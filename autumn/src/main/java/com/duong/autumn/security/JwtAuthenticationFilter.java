@@ -48,7 +48,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             UserDetails details = userDetailsService.loadUserByUsername(claims.getSubject());
             if (!claims.getSubject().equals(details.getUsername()) || !details.isEnabled()
                     || !details.isAccountNonLocked() || !details.isAccountNonExpired()
-                    || !details.isCredentialsNonExpired()) {
+                    || !details.isCredentialsNonExpired()
+                    || !jwtService.isTokenVersionValid(claims, details)) {
                 reject(response);
                 return;
             }

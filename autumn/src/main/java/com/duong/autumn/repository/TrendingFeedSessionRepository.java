@@ -30,4 +30,15 @@ public interface TrendingFeedSessionRepository extends JpaRepository<TrendingFee
     @Modifying
     @Query("DELETE FROM TrendingFeedSession v WHERE v.releasedAt < :cutoff")
     int deleteReleasedBefore(@Param("cutoff") Instant cutoff);
+
+// đóng phiên của user đăng xuất, đổi mk.
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("""
+            UPDATE TrendingFeedSession s
+            SET s.snapshotId = null, s.releasedAt = :now
+            WHERE s.userId = :userId AND s.releasedAt IS NULL
+            """)
+    int releaseAllActiveByUserId(@Param("userId") Long userId, @Param("now") Instant now);
+
+
 }

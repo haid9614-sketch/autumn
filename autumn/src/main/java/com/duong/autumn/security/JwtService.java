@@ -7,9 +7,11 @@ import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
+
 import java.security.Key;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.Map;
 
 @Service
 public class JwtService {
@@ -38,10 +40,21 @@ public class JwtService {
 
     public String generateToken(UserDetails userDetails) {
         long now = System.currentTimeMillis();
-        return Jwts.builder().setClaims(new HashMap<>())
-                .setSubject(userDetails.getUsername()).setIssuedAt(new Date(now))
+        Map<String, Object> claims = new HashMap<>();
+        if (userDetails instanceof CustomUserDetails customDetails && customDetails.getUser() != null) {
+            Integer version = customDetails.getUser().getTokenVersion();
+            claims.put("tokenVersion", version != null ? version : 0);
+        } else {
+            claims.put("tokenVersion", 0);
+        }
+
+        return Jwts.builder()
+                .setClaims(claims)
+                .setSubject(userDetails.getUsername())
+                .setIssuedAt(new Date(now))
                 .setExpiration(new Date(now + jwtExpiration))
-                .signWith(signingKey, SignatureAlgorithm.HS256).compact();
+                .signWith(signingKey, SignatureAlgorithm.HS256)
+                .compact();
     }
 
     public Claims parseValidatedClaims(String token) {
@@ -51,6 +64,17 @@ public class JwtService {
             throw new MalformedJwtException("Token thiếu subject hoặc expiration.");
         }
         return claims;
+    }
+
+    public boolean isTokenVersionValid(Claims claims, UserDetails userDetails) {
+        if (!(userDetails instanceof CustomUserDetails customDetails) || customDetails.getUser() == null) {
+            return true;
+        }
+        int expectedVersion = customDetails.getUser().getTokenVersion() != null
+                ? customDetails.getUser().getTokenVersion() : 0;
+        Number tokenVersionClaim = claims.get("tokenVersion", Number.class);
+        int actualVersion = tokenVersionClaim != null ? tokenVersionClaim.intValue() : 0;
+        return actualVersion == expectedVersion;
     }
 
     public String getEmailFromToken(String token) {
@@ -68,11 +92,12 @@ public class JwtService {
 
     public boolean isTokenValid(String token, UserDetails userDetails) {
         try {
+            Claims claims = parseValidatedClaims(token);
             return userDetails != null
-                    && userDetails.getUsername().equals(parseValidatedClaims(token).getSubject());
+                    && userDetails.getUsername().equals(claims.getSubject())
+                    && isTokenVersionValid(claims, userDetails);
         } catch (JwtException | IllegalArgumentException exception) {
             return false;
         }
     }
 }
-
