@@ -15,6 +15,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import com.duong.autumn.dto.response.SearchPageResponse;
+import com.duong.autumn.dto.response.UserSearchResponse;
 
 import java.util.List;
 
@@ -26,6 +28,15 @@ public class UserController {
     private final UserService userService;
     private final FollowService followService;
     private final PostService postService;
+
+    // Một ô tìm kiếm cho cả username và name.
+    @GetMapping("/search")
+    public ResponseEntity<SearchPageResponse<UserSearchResponse>> searchUsers(
+            @RequestParam String keyword,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return ResponseEntity.ok(userService.searchUsers(keyword, page, size));
+    }
 
     // Xem trang cá nhân của mình
     @GetMapping("/me")

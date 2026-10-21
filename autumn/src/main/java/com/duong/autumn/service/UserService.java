@@ -19,6 +19,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
+import com.duong.autumn.dto.response.SearchPageResponse;
+import com.duong.autumn.dto.response.UserSearchResponse;
+import com.duong.autumn.search.SearchQuery;
 
 @Service
 @RequiredArgsConstructor
@@ -181,6 +184,17 @@ public class UserService {
 
         return new MessageResponse("Đổi username thành công");
     }
+
+    // tim nguoi dung user
+    @Transactional(readOnly = true)
+    public SearchPageResponse<UserSearchResponse> searchUsers(String keyword, int page, int size) {
+        getCurrentUserId();
+        SearchQuery query = SearchQuery.of(keyword, page, size);
+        var results = userRepository.searchActiveUsers(query.keyword(),
+                query.containsPattern(), query.prefixPattern(), query.pageable());
+        return SearchPageResponse.from(results);
+    }
+
 
 
 }

@@ -15,6 +15,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import com.duong.autumn.dto.response.SearchPageResponse;
 
 import java.util.HashMap;
 import java.util.List;
@@ -65,6 +66,16 @@ public class PostController {
         postService.deletePost(postId);
         return ResponseEntity.ok(new MessageResponse("Đã xóa bài viết thành công"));
     }
+
+    // Tìm bài viết theo tên; dùng page/size riêng, không dùng cursor của feed
+    @GetMapping("/search")
+    public ResponseEntity<SearchPageResponse<PostResponse>> searchPosts(
+            @RequestParam String keyword,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return ResponseEntity.ok(postService.searchPosts(keyword, page, size));
+    }
+
 
     // CỤM API TIM BÀI VIẾT
 

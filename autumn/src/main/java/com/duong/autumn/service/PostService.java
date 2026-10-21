@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+import com.duong.autumn.search.SearchQuery;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -201,6 +202,17 @@ public class PostService {
                 original.getIsLiked()
         );
     }
+
+    // tim bai viet
+    @Transactional(readOnly = true)
+    public SearchPageResponse<PostResponse> searchPosts(String keyword, int page, int size) {
+        Long viewerId = currentUserId();
+        SearchQuery query = SearchQuery.of(keyword, page, size);
+        var results = postRepository.searchPostsByName(
+                query.containsPattern(), viewerId, query.pageable());
+        return SearchPageResponse.from(results.map(row -> toPreviewPost(row.getPost())));
+    }
+
 
     private Long currentUserId() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();

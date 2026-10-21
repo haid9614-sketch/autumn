@@ -4,10 +4,12 @@ import com.duong.autumn.dto.internal.FeedRow;
 import com.duong.autumn.dto.response.PostResponse;
 import com.duong.autumn.entity.Post;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Slice;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -189,6 +191,20 @@ public interface PostRepository extends JpaRepository<Post, Long> {
             """, nativeQuery = true)
     int populateTrendingSnapshot(@Param("snapshotId") String snapshotId);
 
-
+    // HQL collate(): chỉ áp dụng so sánh cho tìm kiếm, không đổi collation của bảng.
+    @Query(FEED_SELECT + """
+                p.createdAt, p.id, 0L)
+            FROM Post p
+            JOIN p.user u
+            WHERE p.isDelete = 0
+              AND u.isDelete = 0
+              AND collate(p.name as utf8mb4_0900_ai_ci) LIKE :containsPattern ESCAPE '!'
+            ORDER BY p.createdAt DESC, p.id DESC
+            """)
+    Slice<FeedRow> searchPostsByName(
+            @Param("containsPattern") String containsPattern,
+            @Param("currentUserId") Long currentUserId,
+            Pageable pageable
+    );
 
 }

@@ -7,6 +7,9 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import java.time.LocalDateTime;
 import java.util.Optional;
+import com.duong.autumn.dto.response.UserSearchResponse;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Slice;
 
 @Repository
 public interface UserRepository extends JpaRepository<User, Long> {
@@ -17,4 +20,30 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     @Query("SELECT u FROM User u WHERE u.id = :id AND u.isDelete = 0")
     Optional<User> findActiveById(@Param("id") Long id);
+
+    // tim kiem user
+
+    @Query("""
+            SELECT new com.duong.autumn.dto.response.UserSearchResponse(u.id, u.avatar, u.name, u.username)
+            FROM User u
+            WHERE u.isDelete = 0
+              AND (
+                  collate(u.username as utf8mb4_0900_ai_ci) LIKE :containsPattern ESCAPE '!'
+                  OR collate(u.name as utf8mb4_0900_ai_ci) LIKE :containsPattern ESCAPE '!'
+              )
+            ORDER BY CASE
+                WHEN collate(u.username as utf8mb4_0900_ai_ci) = :keyword THEN 0
+                WHEN collate(u.username as utf8mb4_0900_ai_ci) LIKE :prefixPattern ESCAPE '!' THEN 1
+                WHEN collate(u.name as utf8mb4_0900_ai_ci) LIKE :prefixPattern ESCAPE '!' THEN 2
+                ELSE 3
+            END,
+            collate(u.username as utf8mb4_0900_ai_ci) ASC, u.id ASC
+            """)
+    Slice<UserSearchResponse> searchActiveUsers(
+            @Param("keyword") String keyword,
+            @Param("containsPattern") String containsPattern,
+            @Param("prefixPattern") String prefixPattern,
+            Pageable pageable
+    );
+
 }
