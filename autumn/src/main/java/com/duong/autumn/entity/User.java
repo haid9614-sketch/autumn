@@ -4,11 +4,15 @@ import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
+import org.hibernate.annotations.DynamicUpdate;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import java.time.Instant;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
+@DynamicUpdate
 @Table(name = "users")
 @Getter
 @Setter
@@ -56,4 +60,17 @@ public class User {
     @Builder.Default
     @Column(name = "token_version", nullable = false, columnDefinition = "INT NOT NULL DEFAULT 0")
     private Integer tokenVersion = 0;
+
+    // Chỉ giữ một chuỗi refresh đang có hiệu lực cho mỗi tài khoản.
+    @JsonIgnore
+    @Column(name = "refresh_token_hash", length = 64)
+    private String refreshTokenHash;
+
+    @JsonIgnore
+    @Column(name = "refresh_token_family", length = 36)
+    private String refreshTokenFamily;
+
+    @JsonIgnore
+    @Column(name = "refresh_token_expires_at")
+    private Instant refreshTokenExpiresAt;
 }

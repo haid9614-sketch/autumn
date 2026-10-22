@@ -9,6 +9,8 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import com.duong.autumn.dto.request.RefreshTokenRequest;
+import org.springframework.http.CacheControl;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -22,10 +24,21 @@ public class AuthController {
         return ResponseEntity.ok(authService.register(request));
     }
 
+   // login (có cấp refresh token)
     @PostMapping("/login")
     public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
-        return ResponseEntity.ok(authService.login(request));
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .header("Pragma", "no-cache").body(authService.login(request));
     }
+
+
+    // REFRESH token
+    @PostMapping("/refresh")
+    public ResponseEntity<AuthResponse> refresh(@Valid @RequestBody RefreshTokenRequest request) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .header("Pragma", "no-cache").body(authService.refresh(request));
+    }
+
 
     @PostMapping("/logout")
     public ResponseEntity<MessageResponse> logout() {

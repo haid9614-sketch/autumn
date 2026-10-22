@@ -25,8 +25,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getServletPath();
-        // Token cũ do client gửi kèm không được chặn đăng nhập/đăng ký.
-        return "/api/auth/login".equals(path) || "/api/auth/register".equals(path);
+        // Refresh tự xác thực bằng token trong body; bỏ qua access token cũ trong header.
+        return "/api/auth/login".equals(path) || "/api/auth/register".equals(path)
+                || "/api/auth/refresh".equals(path);
     }
 
     @Override

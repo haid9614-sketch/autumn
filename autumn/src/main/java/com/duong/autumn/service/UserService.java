@@ -157,13 +157,20 @@ public class UserService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Mật khẩu mới không được giống mật khẩu cũ");
         }
 
-        currentUser.setPassword(passwordEncoder.encode(request.getNewPassword()));
-        currentUser.setTokenVersion((currentUser.getTokenVersion() == null ? 0 : currentUser.getTokenVersion()) + 1);
-
-        userRepository.save(currentUser);
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        CustomUserDetails principal = (CustomUserDetails) authentication.getPrincipal();
+        int expectedVersion = principal.getUser().getTokenVersion() == null ? 0 : principal.getUser().getTokenVersion();
+        int changed = userRepository.updatePasswordAndRevokeTokens(currentUserId, expectedVersion,
+                currentUser.getPassword(), passwordEncoder.encode(request.getNewPassword()));
+        if (changed != 1) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,
+                    "Phiên hoặc mật khẩu đã thay đổi. Hãy đăng nhập lại.");
+        }
 
         return new MessageResponse("Đổi mật khẩu thành công");
     }
+
+
 
     // 6. Đổi username
     @Transactional

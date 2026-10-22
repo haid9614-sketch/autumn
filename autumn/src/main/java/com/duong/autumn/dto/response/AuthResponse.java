@@ -1,5 +1,6 @@
 package com.duong.autumn.dto.response;
 
+import java.time.Instant;
 import lombok.Builder;
 import lombok.Getter;
 
@@ -12,4 +13,8 @@ public class AuthResponse {
     private Long id;
     private String username;
     private String email;
+
+    private String refreshToken;
+    private Instant accessTokenExpiresAt;
+    private Instant refreshTokenExpiresAt;
 }

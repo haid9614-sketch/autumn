@@ -18,6 +18,13 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
+import java.util.UUID;
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtException;
 
 @Service
 @RequiredArgsConstructor
@@ -46,6 +53,7 @@ public class AuthService {
         return new MessageResponse("Đăng ký tài khoản thành công");
     }
 
+    @Transactional
     public AuthResponse login(LoginRequest request) {
         Authentication result;
         try {
@@ -59,9 +67,46 @@ public class AuthService {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Không thể đăng nhập tài khoản này.");
         }
         User user = details.getUser();
-        return AuthResponse.builder()
-                .token(jwtService.generateToken(details)).id(user.getId())
-                .email(user.getEmail()).username(user.getUsername()).build();
+        String family = UUID.randomUUID().toString();
+        JwtService.TokenPair pair = jwtService.issueTokenPair(details, family);
+        int stored = userRepository.storeRefreshTokenOnLogin(user.getId(), version(user), user.getPassword(),
+                hash(pair.refreshToken()), family, pair.refreshExpiresAt());
+        if (stored != 1) throw invalidSession();
+        return response(user, pair);
+    }
+
+    // Trả 401 sau khi phát hiện replay vẫn phải COMMIT việc thu hồi phiên.
+    @Transactional(noRollbackFor = ResponseStatusException.class)
+    public AuthResponse refresh(RefreshTokenRequest request) {
+        String token = request.refreshToken();
+        Claims claims;
+        try {
+            claims = jwtService.parseRefreshClaims(token);
+        } catch (JwtException | IllegalArgumentException exception) {
+            throw invalidSession();
+        }
+        long userId = jwtService.refreshUserId(claims);
+        int expectedVersion = jwtService.tokenVersion(claims, false);
+        String family = claims.get("refreshFamily", String.class);
+        User user = userRepository.findActiveById(userId).orElseThrow(AuthService::invalidSession);
+        if (!user.getEmail().equals(claims.getSubject()) || version(user) != expectedVersion
+                || !family.equals(user.getRefreshTokenFamily())) {
+            throw invalidSession();
+        }
+
+        JwtService.TokenPair pair = jwtService.issueTokenPair(new CustomUserDetails(user), family);
+        String oldHash = hash(token);
+        Instant now = Instant.now();
+        int rotated = userRepository.rotateRefreshToken(userId, expectedVersion, family, oldHash,
+                hash(pair.refreshToken()), pair.refreshExpiresAt(), now);
+        if (rotated != 1) {
+            // Family khác (đăng nhập mới) hoặc version đã tăng không bị nhánh này thu hồi nhầm.
+            if (userRepository.revokeOnRefreshReplay(userId, expectedVersion, family, oldHash, now) == 1) {
+                trendingFeedSessionRepository.releaseAllActiveByUserId(userId, now);
+            }
+            throw invalidSession();
+        }
+        return response(user, pair);
     }
 
     // Đăng xuất: Vô hiệu hóa JWT hiện tại và đóng toàn bộ phiên Trending đang mở của user
@@ -75,10 +120,36 @@ public class AuthService {
         }
 
         Long userId = details.getId();
-        userRepository.incrementTokenVersion(userId);
+        if (userRepository.revokeTokensIfVersionMatches(userId, version(details.getUser())) != 1) {
+            throw invalidSession();
+        }
         trendingFeedSessionRepository.releaseAllActiveByUserId(userId, Instant.now());
         SecurityContextHolder.clearContext();
 
         return new MessageResponse("Đăng xuất thành công");
+    }
+
+    private AuthResponse response(User user, JwtService.TokenPair pair) {
+        return AuthResponse.builder().token(pair.accessToken()).refreshToken(pair.refreshToken())
+                .accessTokenExpiresAt(pair.accessExpiresAt()).refreshTokenExpiresAt(pair.refreshExpiresAt())
+                .id(user.getId()).email(user.getEmail()).username(user.getUsername()).build();
+    }
+
+    private int version(User user) {
+        return user.getTokenVersion() == null ? 0 : user.getTokenVersion();
+    }
+
+    private static ResponseStatusException invalidSession() {
+        return new ResponseStatusException(HttpStatus.UNAUTHORIZED,
+                "Phiên đăng nhập không hợp lệ hoặc đã hết hạn. Hãy đăng nhập lại.");
+    }
+
+    private String hash(String token) {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                    .digest(token.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 không khả dụng.", exception);
+        }
     }
 }
