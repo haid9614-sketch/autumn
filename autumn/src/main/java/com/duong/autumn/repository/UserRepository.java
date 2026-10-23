@@ -61,6 +61,13 @@ public interface UserRepository extends JpaRepository<User, Long> {
     @Query("UPDATE User u SET u.avatar = :avatar WHERE u.id = :userId AND u.isDelete = 0")
     int updateAvatarById(@Param("userId") Long userId, @Param("avatar") String avatar);
 
+    // Đọc avatar mới nhất và tuần tự hóa các lần đổi avatar của cùng user.
+    // Native locking read tránh dùng lại entity cũ trong persistence context.
+    @Query(value = "SELECT avatar FROM users WHERE id = :userId AND is_delete = 0 FOR UPDATE",
+            nativeQuery = true)
+    String findActiveAvatarForUpdate(@Param("userId") Long userId);
+
+
     // Chỉ cấp refresh nếu thông tin vừa xác thực vẫn còn đúng trong DB.
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("""

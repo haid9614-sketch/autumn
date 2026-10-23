@@ -11,12 +11,16 @@ import com.duong.autumn.repository.PostRepository;
 import com.duong.autumn.repository.UserRepository;
 import com.duong.autumn.security.CustomUserDetails;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 import com.duong.autumn.dto.response.SearchPageResponse;
@@ -24,6 +28,7 @@ import com.duong.autumn.dto.response.UserSearchResponse;
 import com.duong.autumn.search.SearchQuery;
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class UserService {
 
@@ -32,6 +37,7 @@ public class UserService {
     private final PostRepository postRepository;
     private final FileUploadService fileUploadService;
     private final PasswordEncoder passwordEncoder;
+    private final PlatformTransactionManager transactionManager;
 
     private Long getCurrentUserId() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
@@ -98,6 +104,7 @@ public class UserService {
     }
 
     // 3. Cập nhật avatar
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public MessageResponse updateAvatar(MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "File ảnh không được để trống");
@@ -108,19 +115,40 @@ public class UserService {
         //  Upload lên Cloudinary ngoài Transaction DB để không làm nghẽn kết nối
         String newImageUrl = fileUploadService.uploadImage(file, "autumn_avatars");
 
-        //  Đánh dấu ảnh mới là ATTACHED và cập nhật DB
-        User currentUser = userRepository.findActiveById(currentUserId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy dữ liệu người dùng"));
+        String oldAvatarUrl;
+        try {
+            // execute chỉ trả về sau khi commit; lỗi commit cũng đi vào catch.
+            oldAvatarUrl = new TransactionTemplate(transactionManager).execute(status -> {
+                userRepository.findActiveById(currentUserId)
+                        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                                "Không tìm thấy dữ liệu người dùng"));
+                String previous = userRepository.findActiveAvatarForUpdate(currentUserId);
+                fileUploadService.markImageInUse(newImageUrl, currentUserId);
+                int changed = userRepository.updateAvatarById(currentUserId, newImageUrl);
+                if (changed != 1) {
+                    throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                            "Không tìm thấy dữ liệu người dùng");
+                }
+                return previous;
+            });
+        } catch (RuntimeException exception) {
+            // Avatar cũ và ATTACHED mới đã rollback; dọn upload mới ở transaction khác.
+            cleanupAvatarBestEffort(newImageUrl, currentUserId);
+            throw exception;
+        }
 
-        String oldAvatarUrl = currentUser.getAvatar();
-        fileUploadService.markImageInUse(newImageUrl, currentUserId);
-
-        userRepository.updateAvatarById(currentUserId, newImageUrl);
-
-        // Dọn dẹp avatar cũ trên Cloudinary (nếu là ảnh thuộc hệ thống và không còn dùng ở đâu khác)
-        fileUploadService.cleanupReplacedAvatar(oldAvatarUrl, currentUserId);
+        // DB đã commit. Dọn ảnh cũ thất bại không biến cập nhật thành công thành HTTP 500.
+        cleanupAvatarBestEffort(oldAvatarUrl, currentUserId);
 
         return new MessageResponse("Cập nhật ảnh đại diện thành công");
+    }
+
+    private void cleanupAvatarBestEffort(String imageUrl, Long ownerId) {
+        try {
+            fileUploadService.cleanupReplacedAvatar(imageUrl, ownerId);
+        } catch (RuntimeException exception) {
+            log.warn("Chưa dọn được ảnh sau cập nhật avatar của user {}", ownerId, exception);
+        }
     }
 
     // 4. Cập nhật thông tin cơ bản (name, sex, birthday)

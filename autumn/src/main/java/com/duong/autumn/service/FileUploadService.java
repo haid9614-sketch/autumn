@@ -15,6 +15,12 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 import java.io.IOException;
@@ -31,6 +37,7 @@ public class FileUploadService {
     private final ImageAssetRepository assetRepository;
     private final PostRepository postRepository;
     private final UserRepository userRepository;
+    private final PlatformTransactionManager transactionManager;
 
     // Không giữ transaction DB trong suốt thời gian upload lên provider.
     public String uploadImage(MultipartFile file, String folderName) {
@@ -71,32 +78,40 @@ public class FileUploadService {
         }
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void deleteImage(String imageUrl) {
-        ImageAsset asset = ownedAsset(imageUrl, currentUserId());
-        if (asset.getState() == ImageAssetState.DELETED) {
-            return;
+        Long ownerId = currentUserId();
+        DeletionTarget target = newTransaction().execute(status -> {
+            ImageAsset asset = ownedAsset(imageUrl, ownerId);
+            if (asset.getState() == ImageAssetState.DELETED) {
+                return null;
+            }
+            if ((asset.getState() != ImageAssetState.PENDING
+                    && asset.getState() != ImageAssetState.DELETE_PENDING) || isReferenced(imageUrl)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Ảnh đang được sử dụng, không thể xóa qua API dọn ảnh tạm.");
+            }
+            asset.setState(ImageAssetState.DELETE_PENDING);
+            assetRepository.save(asset);
+            return targetOf(asset);
+        });
+        // Marker đã commit trước lời gọi provider. API trực tiếp vẫn báo 502 nếu provider lỗi.
+        if (target != null) {
+            finishDeletion(target);
         }
-        if (asset.getState() != ImageAssetState.PENDING
-                || postRepository.existsByImage(asset.getImageUrl())
-                || userRepository.existsByAvatar(asset.getImageUrl())) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Ảnh đang được sử dụng, không thể xóa qua API dọn ảnh tạm.");
-        }
-        destroy(asset.getPublicId());
-        asset.setState(ImageAssetState.DELETED);
-        assetRepository.save(asset);
     }
 
     // Tham gia transaction tạo bài/đổi avatar; save thất bại thì trạng thái rollback.
-    @Transactional
+    @Transactional(propagation = Propagation.MANDATORY)
     public void markImageInUse(String imageUrl, Long ownerId) {
         if (!Objects.equals(ownerId, currentUserId())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Bạn không sở hữu ảnh này.");
         }
         ImageAsset asset = ownedAsset(imageUrl, ownerId);
-        if (asset.getState() == ImageAssetState.DELETED) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Ảnh đã bị xóa. Hãy tải ảnh lại.");
+        if (asset.getState() == ImageAssetState.DELETED
+                || asset.getState() == ImageAssetState.DELETE_PENDING) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Ảnh đã bị xóa hoặc đang chờ xóa. Hãy tải ảnh lại.");
         }
         if (asset.getState() == ImageAssetState.PENDING) {
             asset.setState(ImageAssetState.ATTACHED);
@@ -104,21 +119,88 @@ public class FileUploadService {
         }
     }
 
-    // Chỉ gọi sau khi avatar mới commit; giữ ảnh cũ nếu bài viết/avatar khác còn dùng.
-    @Transactional
+    // Giữ tên cũ để PostService hiện tại tiếp tục gọi được.
+    // Tham gia transaction xóa bài, hoặc tạo transaction ngắn khi dọn avatar đã commit.
     public void cleanupReplacedAvatar(String imageUrl, Long ownerId) {
         if (imageUrl == null || imageUrl.isBlank() || !Objects.equals(ownerId, currentUserId())) {
             return;
         }
-        ImageAsset asset = assetRepository.findOwnedForUpdate(imageUrl, ownerId).orElse(null);
-        if (asset == null || asset.getState() == ImageAssetState.DELETED
-                || postRepository.existsByImage(imageUrl)
-                || userRepository.existsByAvatar(imageUrl)) {
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+            ImageAsset asset = assetRepository.findOwnedForUpdate(imageUrl, ownerId).orElse(null);
+            if (asset == null || asset.getState() == ImageAssetState.DELETED || isReferenced(imageUrl)) {
+                return;
+            }
+            asset.setState(ImageAssetState.DELETE_PENDING);
+            assetRepository.save(asset);
+            DeletionTarget target = targetOf(asset);
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override public void afterCommit() {
+                    finishDeletionBestEffort(target);
+                }
+            });
+        });
+    }
+
+    // Job gọi không cần SecurityContext; danh sách chỉ lấy marker do backend đã tạo.
+    public void retryPendingDeletions() {
+        for (ImageAsset asset : assetRepository.findTop50ByStateOrderByIdAsc(ImageAssetState.DELETE_PENDING)) {
+            finishDeletionBestEffort(targetOf(asset));
+        }
+    }
+
+    private record DeletionTarget(String imageUrl, Long ownerId, String publicId) {}
+
+    private DeletionTarget targetOf(ImageAsset asset) {
+        return new DeletionTarget(asset.getImageUrl(), asset.getOwnerId(), asset.getPublicId());
+    }
+
+    private boolean isReferenced(String imageUrl) {
+        return postRepository.existsByImage(imageUrl) || userRepository.existsByAvatar(imageUrl);
+    }
+
+    private TransactionTemplate newTransaction() {
+        TransactionTemplate template = new TransactionTemplate(transactionManager);
+        template.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        return template;
+    }
+
+    private void finishDeletionBestEffort(DeletionTarget target) {
+        try {
+            finishDeletion(target);
+        } catch (RuntimeException exception) {
+            // Giữ DELETE_PENDING trong DB; job thử lại cả khi app đã khởi động lại.
+            log.warn("Chưa dọn được ảnh {}; sẽ thử lại", target.publicId(), exception);
+        }
+    }
+
+    private void finishDeletion(DeletionTarget target) {
+        DeletionTarget ready = newTransaction().execute(status -> {
+            ImageAsset asset = assetRepository.findOwnedForUpdate(target.imageUrl(), target.ownerId()).orElse(null);
+            if (asset == null || asset.getState() != ImageAssetState.DELETE_PENDING) {
+                return null;
+            }
+            if (isReferenced(asset.getImageUrl())) {
+                // Bảo vệ dữ liệu cũ không nhất quán; không xóa ảnh vẫn còn tham chiếu.
+                asset.setState(ImageAssetState.ATTACHED);
+                assetRepository.save(asset);
+                return null;
+            }
+            return targetOf(asset);
+        });
+        if (ready == null) {
             return;
         }
-        destroy(asset.getPublicId());
-        asset.setState(ImageAssetState.DELETED);
-        assetRepository.save(asset);
+
+        // Không giữ transaction kiểm tra trong lúc gọi mạng.
+        // DELETE_PENDING ngăn đăng bài/đổi avatar gắn lại ảnh trong khoảng này.
+        destroy(ready.publicId());
+        newTransaction().executeWithoutResult(status -> {
+            ImageAsset asset = assetRepository.findOwnedForUpdate(ready.imageUrl(), ready.ownerId()).orElse(null);
+            if (asset != null && asset.getState() == ImageAssetState.DELETE_PENDING) {
+                asset.setState(ImageAssetState.DELETED);
+                assetRepository.save(asset);
+            }
+        });
     }
 
     private ImageAsset ownedAsset(String imageUrl, Long ownerId) {
@@ -200,5 +282,7 @@ public class FileUploadService {
         }
         return details.getId();
     }
+
+
 }
 

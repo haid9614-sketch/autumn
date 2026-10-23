@@ -182,10 +182,11 @@ public interface PostRepository extends JpaRepository<Post, Long> {
     @Query(value = """
             INSERT INTO feed_trending_items
                 (snapshot_id, post_id, like_count, post_created_at)
-            SELECT :snapshotId, p.id, COUNT(l.id), p.created_at
+            SELECT :snapshotId, p.id, COUNT(lu.id), p.created_at
             FROM posts p
             JOIN users u ON u.id = p.user_id
             LEFT JOIN likes l ON l.post_id = p.id
+            LEFT JOIN users lu ON lu.id = l.user_id AND lu.is_delete = 0
             WHERE p.is_delete = 0 AND u.is_delete = 0
             GROUP BY p.id, p.created_at
             """, nativeQuery = true)
