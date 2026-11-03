@@ -23,7 +23,6 @@ public class ModerationController {
     private final UserBlockRepository userBlockRepository;
     private final ContentReportRepository contentReportRepository;
 
-    // 1. Lấy toàn bộ danh sách ID đã chặn và báo cáo của user hiện tại để đồng bộ qua các thiết bị
     @GetMapping("/me")
     public ResponseEntity<?> getMyModerationData(@AuthenticationPrincipal CustomUserDetails userDetails) {
         Long userId = userDetails.getId();
@@ -49,7 +48,7 @@ public class ModerationController {
         ));
     }
 
-    // 2. API Chặn người dùng
+    // Chặn người dùng + Tự động hủy Follow 2 chiều
     @PostMapping("/block/{targetUserId}")
     @Transactional
     public ResponseEntity<?> blockUser(@AuthenticationPrincipal CustomUserDetails userDetails,
@@ -65,10 +64,13 @@ public class ModerationController {
             block.setBlockedUserId(targetUserId);
             userBlockRepository.save(block);
         }
+
+        // Xóa luôn quan hệ follow 2 chiều giữa 2 người dùng
+        userBlockRepository.deleteFollowsBetween(userId, targetUserId);
+
         return ResponseEntity.ok(Map.of("message", "Đã chặn người dùng thành công"));
     }
 
-    // 3. API Bỏ chặn người dùng
     @DeleteMapping("/block/{targetUserId}")
     @Transactional
     public ResponseEntity<?> unblockUser(@AuthenticationPrincipal CustomUserDetails userDetails,
@@ -78,13 +80,12 @@ public class ModerationController {
         return ResponseEntity.ok(Map.of("message", "Đã bỏ chặn thành công"));
     }
 
-    // 4. API Báo cáo bài viết / bình luận
     @PostMapping("/report")
     @Transactional
     public ResponseEntity<?> reportContent(@AuthenticationPrincipal CustomUserDetails userDetails,
                                            @RequestBody Map<String, Object> request) {
         Long userId = userDetails.getId();
-        String targetType = (String) request.get("targetType"); // "POST" hoặc "COMMENT"
+        String targetType = (String) request.get("targetType");
         Long targetId = Long.valueOf(request.get("targetId").toString());
         String reason = (String) request.get("reason");
 

@@ -6,9 +6,16 @@ import lombok.Setter;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "user_blocks", uniqueConstraints = {
-        @UniqueConstraint(columnNames = {"user_id", "blocked_user_id"})
-})
+@Table(
+        name = "user_blocks",
+        uniqueConstraints = {
+                @UniqueConstraint(name = "uk_user_blocks_pair", columnNames = {"user_id", "blocked_user_id"})
+        },
+        indexes = {
+                @Index(name = "idx_user_blocks_user_blocked", columnList = "user_id, blocked_user_id"),
+                @Index(name = "idx_user_blocks_blocked_user", columnList = "blocked_user_id, user_id")
+        }
+)
 @Getter
 @Setter
 public class UserBlock {
@@ -17,10 +24,10 @@ public class UserBlock {
     private Long id;
 
     @Column(name = "user_id", nullable = false)
-    private Long userId; // Người đi chặn
+    private Long userId;
 
     @Column(name = "blocked_user_id", nullable = false)
-    private Long blockedUserId; // Người bị chặn
+    private Long blockedUserId;
 
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();

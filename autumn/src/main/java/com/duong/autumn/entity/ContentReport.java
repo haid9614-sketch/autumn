@@ -6,7 +6,12 @@ import lombok.Setter;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "content_reports")
+@Table(
+        name = "content_reports",
+        indexes = {
+                @Index(name = "idx_content_reports_lookup", columnList = "user_id, target_type, target_id")
+        }
+)
 @Getter
 @Setter
 public class ContentReport {
@@ -15,16 +20,16 @@ public class ContentReport {
     private Long id;
 
     @Column(name = "user_id", nullable = false)
-    private Long userId; // Người báo cáo
+    private Long userId;
 
-    @Column(name = "target_type", nullable = false)
-    private String targetType; // "POST" hoặc "COMMENT" hoặc "USER"
+    @Column(name = "target_type", nullable = false, length = 32)
+    private String targetType;
 
     @Column(name = "target_id", nullable = false)
-    private Long targetId; // ID của bài viết hoặc bình luận bị báo cáo
+    private Long targetId;
 
     @Column(name = "reason")
-    private String reason; // Lý do báo cáo
+    private String reason;
 
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();

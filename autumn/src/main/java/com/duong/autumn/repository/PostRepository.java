@@ -58,6 +58,21 @@ public interface PostRepository extends JpaRepository<Post, Long> {
                      THEN true ELSE false END,
             """;
 
+    // Lọc 2 chiều người dùng bị chặn và bài viết đã bị người xem báo cáo.
+    String MODERATION_FILTER = """
+              AND NOT EXISTS (
+                  SELECT ub.id FROM UserBlock ub
+                  WHERE (ub.userId = :currentUserId AND ub.blockedUserId = u.id)
+                     OR (ub.userId = u.id AND ub.blockedUserId = :currentUserId)
+              )
+              AND NOT EXISTS (
+                  SELECT cr.id FROM ContentReport cr
+                  WHERE cr.userId = :currentUserId
+                    AND cr.targetType = 'POST'
+                    AND cr.targetId = p.id
+              )
+            """;
+
     // Xem chi tiết 1 bài viết (trả về full content)
     @Query("""
             SELECT new com.duong.autumn.dto.response.PostResponse(
@@ -75,7 +90,7 @@ public interface PostRepository extends JpaRepository<Post, Long> {
             WHERE p.id = :postId
               AND p.isDelete = 0
               AND u.isDelete = 0
-            """)
+            """ + MODERATION_FILTER)
     Optional<PostResponse> findPostDetailById(
             @Param("postId") Long postId,
             @Param("currentUserId") Long currentUserId
@@ -89,6 +104,7 @@ public interface PostRepository extends JpaRepository<Post, Long> {
             WHERE p.isDelete = 0
               AND u.isDelete = 0
               AND u.id = :targetUserId
+            """ + MODERATION_FILTER + """
               AND (
                   :afterCreatedAt IS NULL
                   OR p.createdAt < :afterCreatedAt
@@ -114,6 +130,7 @@ public interface PostRepository extends JpaRepository<Post, Long> {
                   SELECT f.following.id FROM Follow f
                   WHERE f.follower.id = :currentUserId
               ))
+            """ + MODERATION_FILTER + """
               AND (
                   :afterCreatedAt IS NULL
                   OR p.createdAt < :afterCreatedAt
@@ -136,6 +153,7 @@ public interface PostRepository extends JpaRepository<Post, Long> {
             WHERE p.isDelete = 0
               AND u.isDelete = 0
               AND myLike.user.id = :currentUserId
+            """ + MODERATION_FILTER + """
               AND (
                   :afterCreatedAt IS NULL
                   OR myLike.createdAt < :afterCreatedAt
@@ -158,6 +176,7 @@ public interface PostRepository extends JpaRepository<Post, Long> {
             WHERE item.snapshotId = :snapshotId
               AND p.isDelete = 0
               AND u.isDelete = 0
+            """ + MODERATION_FILTER + """
               AND (
                   :afterLikeCount IS NULL
                   OR item.likeCount < :afterLikeCount
@@ -200,6 +219,7 @@ public interface PostRepository extends JpaRepository<Post, Long> {
             WHERE p.isDelete = 0
               AND u.isDelete = 0
               AND collate(p.name as utf8mb4_0900_ai_ci) LIKE :containsPattern ESCAPE '!'
+            """ + MODERATION_FILTER + """
             ORDER BY p.createdAt DESC, p.id DESC
             """)
     Slice<FeedRow> searchPostsByName(
@@ -207,5 +227,6 @@ public interface PostRepository extends JpaRepository<Post, Long> {
             @Param("currentUserId") Long currentUserId,
             Pageable pageable
     );
+
 
 }
