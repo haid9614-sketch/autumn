@@ -21,5 +21,14 @@ public interface UserBlockRepository extends JpaRepository<UserBlock, Long> {
                OR (f.follower.id = :targetUserId AND f.following.id = :userId)
             """)
     void deleteFollowsBetween(@Param("userId") Long userId, @Param("targetUserId") Long targetUserId);
+
+    @Query("""
+            SELECT CASE WHEN COUNT(ub) > 0 THEN true ELSE false END
+            FROM UserBlock ub
+            WHERE (ub.userId = :u1 AND ub.blockedUserId = :u2)
+               OR (ub.userId = :u2 AND ub.blockedUserId = :u1)
+            """)
+    boolean existsBlockBetween(@Param("u1") Long u1, @Param("u2") Long u2);
+
 }
 
