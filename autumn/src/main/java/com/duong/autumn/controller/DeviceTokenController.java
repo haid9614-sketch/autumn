@@ -1,6 +1,7 @@
 package com.duong.autumn.controller;
 
 import com.duong.autumn.dto.request.RegisterDeviceTokenRequest;
+import com.duong.autumn.dto.request.UnregisterDeviceTokenRequest;
 import com.duong.autumn.security.CustomUserDetails;
 import com.duong.autumn.service.DeviceTokenService;
 import jakarta.validation.Valid;
@@ -29,12 +30,12 @@ public class DeviceTokenController {
     }
 
     // Gọi ngay TRƯỚC khi gọi POST /api/auth/logout để chặn lộ thông báo sau khi đăng xuất
-    @DeleteMapping("/token")
+    @PostMapping("/token/unregister")
     public ResponseEntity<?> unregisterToken(
             @AuthenticationPrincipal CustomUserDetails userDetails,
-            @RequestParam("token") String token
+            @Valid @RequestBody UnregisterDeviceTokenRequest request
     ) {
-        deviceTokenService.unregisterToken(userDetails.getId(), token);
+        deviceTokenService.unregisterToken(userDetails.getId(), request.token());
         return ResponseEntity.ok(Map.of("message", "Đã hủy đăng ký thông báo cho thiết bị."));
     }
 
