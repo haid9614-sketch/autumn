@@ -7,7 +7,8 @@ import java.time.Instant;
 @Entity
 @Table(name = "feed_trending_sessions", indexes = {
         @Index(name = "idx_trending_session_snapshot", columnList = "snapshot_id"),
-        @Index(name = "idx_trending_session_release", columnList = "released_at")
+        @Index(name = "idx_trending_session_release", columnList = "released_at"),
+        @Index(name = "idx_trending_session_user_release", columnList = "user_id, released_at")
 })
 public class TrendingFeedSession {
     @Id @Column(length = 36) private String id;

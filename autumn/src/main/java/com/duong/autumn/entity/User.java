@@ -13,7 +13,9 @@ import java.time.LocalDateTime;
 
 @Entity
 @DynamicUpdate
-@Table(name = "users")
+@Table(name = "users", indexes = {
+        @Index(name = "idx_users_avatar", columnList = "avatar")
+})
 @Getter
 @Setter
 @NoArgsConstructor

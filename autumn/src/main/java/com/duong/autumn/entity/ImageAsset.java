@@ -7,7 +7,8 @@ import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "image_assets", indexes = {
-        @Index(name = "idx_image_asset_owner_state", columnList = "owner_id, state")
+        @Index(name = "idx_image_asset_owner_state", columnList = "owner_id, state"),
+        @Index(name = "idx_image_asset_state", columnList = "state")
 }, uniqueConstraints = {
         @UniqueConstraint(name = "uk_image_asset_public_id", columnNames = "public_id"),
         @UniqueConstraint(name = "uk_image_asset_url", columnNames = "image_url")

@@ -7,7 +7,13 @@ import org.hibernate.annotations.CreationTimestamp;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "follows", uniqueConstraints = {@UniqueConstraint(columnNames = {"follower_id", "following_id"})})
+@Table(
+        name = "follows",
+        uniqueConstraints = {@UniqueConstraint(columnNames = {"follower_id", "following_id"})},
+        indexes = {
+                @Index(name = "idx_follows_following_time", columnList = "following_id, created_at, id, follower_id")
+        }
+)
 @Getter
 @Setter
 @AllArgsConstructor
